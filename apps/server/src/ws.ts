@@ -115,6 +115,7 @@ import * as ServerConfig from "./config.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
+import * as WebPush from "./webPush/WebPush.ts";
 import * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
 import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
@@ -1189,6 +1190,7 @@ const layerWsRpc = (
   ServerWsRpcGroup.toLayer(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
+      const webPush = yield* WebPush.WebPush;
       const sql = yield* SqlClient.SqlClient;
       const threadManagement = yield* ThreadManagementService.ThreadManagementService;
       const intakeContext = yield* Effect.context<
@@ -1808,6 +1810,13 @@ const layerWsRpc = (
       });
 
       const handlers = ServerWsRpcGroup.of({
+        [WS_METHODS.webPushGetConfig]: () => webPush.getConfig,
+        [WS_METHODS.webPushGetDevice]: (input) =>
+          webPush.getDevice(currentSessionId, input.deviceId),
+        [WS_METHODS.webPushRegister]: (input) => webPush.register(currentSessionId, input),
+        [WS_METHODS.webPushUnregister]: (input) =>
+          webPush.unregister(currentSessionId, input.deviceId),
+        [WS_METHODS.webPushTest]: (input) => webPush.test(currentSessionId, input.deviceId),
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,

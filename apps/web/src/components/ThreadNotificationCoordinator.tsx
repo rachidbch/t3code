@@ -21,6 +21,7 @@ import {
   setNotificationBadge,
   unlockNotificationAudio,
 } from "../threadNotifications";
+import { isWebPushConfirmed } from "../webPush";
 import { resolveSidebarThreadStatus } from "./Sidebar.logic";
 import { toastManager } from "./ui/toast";
 
@@ -206,6 +207,7 @@ function EnvironmentNotifications({
         continue;
       }
       if (
+        isWebPushConfirmed(environmentId) ||
         !hasDesktopNotifications(mode) ||
         (document.visibilityState === "visible" && document.hasFocus()) ||
         typeof Notification === "undefined" ||

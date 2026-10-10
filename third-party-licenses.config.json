@@ -200,6 +200,15 @@
       }
     },
     {
+      "name": "http_ece",
+      "version": "1.2.0",
+      "sourceUrl": "https://github.com/martinthomson/encrypted-content-encoding",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2015 Martin Thomson"]
+      }
+    },
+    {
       "name": "glob-to-regexp",
       "generatedNotice": {
         "licenseId": "BSD-2-Clause",

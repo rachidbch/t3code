@@ -8,6 +8,8 @@ import { describe, expect, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import {
   AuthOrchestrationOperateScope,
+  AuthOrchestrationReadScope,
+  AuthSettingsWriteScope,
   AuthSourceControlWriteScope,
   ThreadId,
   EnvironmentId,
@@ -204,6 +206,36 @@ it.effect(
         yield* prepare.authorize(registry, env, input);
       }),
     ),
+);
+
+it.effect("requires both read and settings grants to manage background push", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      for (const method of [
+        WS_METHODS.webPushRegister,
+        WS_METHODS.webPushUnregister,
+        WS_METHODS.webPushTest,
+      ]) {
+        const permissions = createCommandPermissions(runtime, method);
+        for (const scopes of [[AuthSettingsWriteScope], [AuthOrchestrationReadScope]]) {
+          registry.set(
+            sessions(env),
+            AsyncResult.success({ ...grant(false), scopes, permissions: scopes }),
+          );
+          expect(registry.get(permissions.permissionAtom(env))).toBe(false);
+          yield* permissions.authorize(registry, env).pipe(Effect.flip);
+        }
+        const scopes = [AuthSettingsWriteScope, AuthOrchestrationReadScope];
+        registry.set(
+          sessions(env),
+          AsyncResult.success({ ...grant(false), scopes, permissions: scopes }),
+        );
+        expect(registry.get(permissions.permissionAtom(env))).toBe(true);
+        yield* permissions.authorize(registry, env);
+      }
+    }),
+  ),
 );
 
 it.effect("honors exact empty permissions and preserves legacy parent grants", () =>

@@ -1,3 +1,10 @@
+import {
+  WebPushError,
+  WebPushDeviceInput,
+  WebPushRegisterInput,
+  WebPushDeviceResult,
+  WebPushConfig,
+} from "./webPush.ts";
 import { OrchestrationDispatchCommandError } from "./orchestrationDispatch.ts";
 import {
   McpAppCallToolInput,
@@ -352,6 +359,11 @@ import { VcsError } from "./vcs.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
+  webPushGetConfig: "webPush.getConfig",
+  webPushGetDevice: "webPush.getDevice",
+  webPushRegister: "webPush.register",
+  webPushUnregister: "webPush.unregister",
+  webPushTest: "webPush.test",
   // Project registry methods
   projectsList: "projects.list",
   projectsAdd: "projects.add",
@@ -1781,6 +1793,30 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
 ) {}
 
 export const WsRpcGroup = RpcGroup.make(
+  Rpc.make(WS_METHODS.webPushGetConfig, {
+    success: WebPushConfig,
+    error: Schema.Union([WebPushError, EnvironmentAuthorizationError]),
+  }),
+  Rpc.make(WS_METHODS.webPushGetDevice, {
+    payload: WebPushDeviceInput,
+    success: WebPushDeviceResult,
+    error: Schema.Union([WebPushError, EnvironmentAuthorizationError]),
+  }),
+  Rpc.make(WS_METHODS.webPushRegister, {
+    payload: WebPushRegisterInput,
+    success: WebPushDeviceResult,
+    error: Schema.Union([WebPushError, EnvironmentAuthorizationError]),
+  }),
+  Rpc.make(WS_METHODS.webPushUnregister, {
+    payload: WebPushDeviceInput,
+    success: Schema.Void,
+    error: Schema.Union([WebPushError, EnvironmentAuthorizationError]),
+  }),
+  Rpc.make(WS_METHODS.webPushTest, {
+    payload: WebPushDeviceInput,
+    success: Schema.Void,
+    error: Schema.Union([WebPushError, EnvironmentAuthorizationError]),
+  }),
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,

@@ -40,6 +40,7 @@ import * as ThreadManagement from "./orchestration-v2/ThreadManagementService.ts
 import * as ProjectService from "./project/ProjectService.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
+import * as WebPush from "./webPush/WebPush.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerSettings from "./serverSettings.ts";
@@ -422,6 +423,7 @@ const make = (options?: StartupOptions) =>
     const orchestrator = yield* Orchestrator.OrchestratorV2;
     const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
     const agentAwarenessRelay = yield* AgentAwarenessRelay.AgentAwarenessRelay;
+    const webPush = yield* WebPush.WebPush;
     const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
     const serverSettings = yield* ServerSettings.ServerSettingsService;
     const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
@@ -524,7 +526,7 @@ const make = (options?: StartupOptions) =>
           "orchestration-v2.effect-worker.start",
           startEffectWorkerWithRelay({
             runWorker: EffectWorker.runDaemon,
-            startRelay: agentAwarenessRelay.start(),
+            startRelay: agentAwarenessRelay.start().pipe(Effect.andThen(webPush.start())),
             workerFiberRef: effectWorkerFiber,
           }),
         ),
