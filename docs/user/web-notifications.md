@@ -5,7 +5,7 @@ fails, or needs input or approval—even when the web app is closed. It works wi
 It does not require the native mobile app or T3 Connect.
 
 Open T3 Code over HTTPS. In **Settings → General**, select the environment you want notifications
-from, then enable **Background web push** and allow notifications when your browser asks. Use
+from, then enable **Background notifications** and allow notifications when your browser asks. Use
 **Test** to check delivery. Enable it separately for each environment and browser/device.
 
 On Android, use a supported browser such as Chrome and install T3 Code on your home screen.

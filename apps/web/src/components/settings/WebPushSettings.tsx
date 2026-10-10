@@ -1,10 +1,14 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useState } from "react";
+import * as Option from "effect/Option";
+import { AsyncResult } from "effect/reactivity";
 import { useWebPush } from "../../hooks/useWebPush";
 import { webPushEnvironment } from "../../state/webPush";
+import { environmentSession } from "../../state/session";
 import { webPushUnsupportedReason } from "../../webPush";
 import { Button } from "../ui/button";
+import { Switch } from "../ui/switch";
 import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 
@@ -23,14 +27,40 @@ function EnvironmentWebPushSettings({ environmentId }: { environmentId: Environm
   const canRegister = useAtomValue(webPushEnvironment.register.permissionAtom(environmentId));
   const canUnregister = useAtomValue(webPushEnvironment.unregister.permissionAtom(environmentId));
   const canTest = useAtomValue(webPushEnvironment.test.permissionAtom(environmentId));
+  const session = useAtomValue(environmentSession.sessionStateAtom(environmentId));
+  const grant = Option.getOrNull(AsyncResult.value(session));
+  const canChange = enabled ? canUnregister : canRegister;
+  const connectionProblem = AsyncResult.isFailure(session)
+    ? "Could not verify this connection's permissions. Reconnect to this machine and try again."
+    : grant === null
+      ? "Connecting to this machine and checking permissions…"
+      : !grant.authenticated
+        ? "Pair with this machine again to enable background notifications."
+        : !canChange
+          ? "This connection needs permission to read threads and change settings. Re-pair with those permissions to enable background notifications."
+          : null;
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const unsupported = webPushUnsupportedReason();
   const denied = !unsupported && Notification.permission === "denied";
   const act = (action: "enable" | "disable" | "test") => {
     if (busy) return;
+    if (action === "enable" && Notification.permission === "denied") {
+      setMessage(
+        "Notifications are blocked. Allow this site in Android or browser notification settings, then turn this switch on again.",
+      );
+      return;
+    }
     // Start the permission request directly in the click gesture, before RPC or lock awaits.
-    const permission = action === "enable" ? Notification.requestPermission() : null;
+    let permission: Promise<NotificationPermission> | null = null;
+    try {
+      if (action === "enable") permission = Notification.requestPermission();
+    } catch {
+      setMessage(
+        "This browser could not request notification permission. Check its site settings and try again.",
+      );
+      return;
+    }
     setBusy(true);
     setMessage(null);
     void lock(async () => {
@@ -41,8 +71,8 @@ function EnvironmentWebPushSettings({ environmentId }: { environmentId: Environm
         action === "test"
           ? "Test push requested. Check your system notifications."
           : action === "disable"
-            ? "Background push disabled for this machine."
-            : "Background push enabled for this machine on this device.",
+            ? "Background notifications are off for this device."
+            : "Background notifications are on for this device.",
       );
     })
       .catch((error: unknown) => {
@@ -59,42 +89,32 @@ function EnvironmentWebPushSettings({ environmentId }: { environmentId: Environm
       {...searchableSetting("background-web-push")}
       description={
         unsupported ??
+        connectionProblem ??
+        (busy ? "Updating background notifications…" : null) ??
         message ??
         (denied
-          ? "Notifications are blocked. Allow this site in Android or browser notification settings before enabling push."
-          : enabled
-            ? "Enabled for this machine on this device. Installed Android web apps can receive alerts while T3 Code is closed; delivery and reopening depend on the browser and OS."
-            : "Not enabled. Install T3 Code in a supported Android browser to receive system alerts while the app is closed. This is separate from alerts while T3 Code is open.")
+          ? "Blocked by your browser. Allow notifications for this site in browser settings, then turn this on."
+          : "Alerts when a thread finishes or needs your attention, even with T3 Code closed.")
       }
       control={
-        unsupported ? undefined : (
-          <div className="flex flex-wrap gap-2">
+        <div className="flex items-center gap-3 @min-[32rem]/settings-row:flex-row-reverse">
+          <Switch
+            aria-label="Background notifications"
+            checked={enabled}
+            disabled={busy || Boolean(unsupported) || !canChange}
+            onCheckedChange={(checked) => act(checked ? "enable" : "disable")}
+          />
+          {enabled && !unsupported && (
             <Button
               size="sm"
               variant="outline"
-              disabled={busy || enabled || denied || !canRegister}
-              onClick={() => act("enable")}
-            >
-              Enable
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy || !canUnregister}
-              onClick={() => act("disable")}
-            >
-              Disable
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy || !enabled || !canTest}
+              disabled={busy || !canTest}
               onClick={() => act("test")}
             >
-              Test
+              Test notification
             </Button>
-          </div>
-        )
+          )}
+        </div>
       }
     />
   );

@@ -347,7 +347,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "background-web-push",
-    title: "Background web push",
+    title: "Background notifications",
     to: "/settings/general",
     searchTerms: [
       "notification android installed web app pwa push completion input approval closed background",
