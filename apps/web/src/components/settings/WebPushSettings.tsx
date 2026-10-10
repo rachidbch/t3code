@@ -6,7 +6,7 @@ import { AsyncResult } from "effect/reactivity";
 import { useWebPush } from "../../hooks/useWebPush";
 import { webPushEnvironment } from "../../state/webPush";
 import { environmentSession } from "../../state/session";
-import { webPushUnsupportedReason } from "../../webPush";
+import { requestWebPushPermission, webPushUnsupportedReason } from "../../webPush";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { SettingsRow } from "./settingsLayout";
@@ -45,16 +45,10 @@ function EnvironmentWebPushSettings({ environmentId }: { environmentId: Environm
   const denied = !unsupported && Notification.permission === "denied";
   const act = (action: "enable" | "disable" | "test") => {
     if (busy) return;
-    if (action === "enable" && Notification.permission === "denied") {
-      setMessage(
-        "Notifications are blocked. Allow this site in Android or browser notification settings, then turn this switch on again.",
-      );
-      return;
-    }
     // Start the permission request directly in the click gesture, before RPC or lock awaits.
     let permission: Promise<NotificationPermission> | null = null;
     try {
-      if (action === "enable") permission = Notification.requestPermission();
+      if (action === "enable") permission = requestWebPushPermission();
     } catch {
       setMessage(
         "This browser could not request notification permission. Check its site settings and try again.",
@@ -93,7 +87,7 @@ function EnvironmentWebPushSettings({ environmentId }: { environmentId: Environm
         (busy ? "Updating background notifications…" : null) ??
         message ??
         (denied
-          ? "Blocked by your browser. Allow notifications for this site in browser settings, then turn this on."
+          ? "Turn this on to request browser permission. If no prompt appears, check notifications in your browser's site settings."
           : "Alerts when a thread finishes or needs your attention, even with T3 Code closed.")
       }
       control={

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   createWebPushLifecycle,
   isWebPushConfirmed,
+  requestWebPushPermission,
   setWebPushConfirmed,
   webPushScope,
 } from "./webPush";
@@ -64,9 +65,25 @@ afterEach(() => {
 });
 
 describe("browser push registration lifecycle", () => {
+  it("requests permission immediately and trusts the new result rather than an earlier denied state", async () => {
+    const f = fixture();
+    let requested = false;
+    vi.stubGlobal("Notification", {
+      permission: "denied",
+      requestPermission: () => {
+        requested = true;
+        return Promise.resolve("granted" as const);
+      },
+    });
+    const permission = requestWebPushPermission();
+    expect(requested).toBe(true);
+    await f.lifecycle.enable(permission);
+    expect(f.rpc.register).toHaveBeenCalledOnce();
+    expect(isWebPushConfirmed(environmentId)).toBe(true);
+  });
   it("requires permission before creating a subscription or sending RPCs", async () => {
     const f = fixture();
-    await expect(f.lifecycle.enable(Promise.resolve("denied"))).rejects.toThrow("blocked");
+    await expect(f.lifecycle.enable(Promise.resolve("denied"))).rejects.toThrow("did not allow");
     expect(f.workerRegister).not.toHaveBeenCalled();
     expect(f.rpc.getConfig).not.toHaveBeenCalled();
   });

@@ -26,6 +26,11 @@ export function webPushUnsupportedReason() {
     return "This browser does not support background web push. Try installing T3 Code in Chrome on Android.";
   return null;
 }
+// Invoke synchronously in the user's gesture, before locks or RPC. Always let the browser
+// handle the request; a reported denial must not prevent us from asking on the user's behalf.
+export function requestWebPushPermission() {
+  return Notification.requestPermission();
+}
 export function webPushScope(environmentId: string) {
   return `/web-push/${encodeURIComponent(environmentId)}/`;
 }
@@ -110,7 +115,7 @@ export function createWebPushLifecycle(environmentId: string, rpc: WebPushRpc) {
     async enable(permission: Promise<NotificationPermission>) {
       if ((await permission) !== "granted")
         throw new Error(
-          "Notifications are blocked. Allow notifications for this site in Android or browser settings, then enable push again.",
+          "The browser did not allow notifications. If no permission prompt appeared, open T3 Code in the full browser (not private/incognito mode) and check browser notification settings.",
         );
       const config = await rpc.getConfig();
       const local = await navigator.serviceWorker.register("/web-push-service-worker.js", {
