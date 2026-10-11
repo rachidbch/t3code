@@ -229,6 +229,41 @@ const harness = Effect.gen(function* () {
           }),
         ),
       ),
+    secretRequest: () =>
+      DateTime.now.pipe(
+        Effect.flatMap((occurredAt) =>
+          events.append({
+            events: [
+              {
+                id: EventId.make(`secret-${++ordinal}`),
+                threadId,
+                type: "turn-item.updated",
+                occurredAt,
+                payload: {
+                  id: TurnItemId.make("secret-item"),
+                  threadId,
+                  runId: current.latestRunId,
+                  nodeId: null,
+                  providerThreadId: null,
+                  providerTurnId: null,
+                  nativeItemRef: null,
+                  parentItemId: null,
+                  ordinal: 2,
+                  status: "waiting",
+                  title: null,
+                  startedAt: occurredAt,
+                  completedAt: null,
+                  updatedAt: occurredAt,
+                  type: "secret_request",
+                  label: "Push test",
+                  reason: "Verifying input notifications",
+                  secretStatus: "pending",
+                },
+              },
+            ],
+          }),
+        ),
+      ),
     metadata: (
       type: "thread.metadata-updated" | "thread.pull-request-synced" = "thread.metadata-updated",
       count = 1,
@@ -368,6 +403,32 @@ describe("durable web push", () => {
         yield* h.metadata("thread.pull-request-synced");
         yield* h.service.drain;
         expect(h.sent).toHaveLength(0);
+      }),
+    ),
+  );
+  it.effect("notifies waiting-for-input when a secret request turn item starts waiting", () =>
+    run(
+      Effect.gen(function* () {
+        const h = yield* harness;
+        yield* h.register();
+        h.setShell({
+          status: "running",
+          pendingRuntimeRequest: {
+            id: RuntimeRequestId.make("secret-item"),
+            kind: "user_input",
+            createdAt: yield* DateTime.now,
+          },
+        });
+        yield* h.secretRequest();
+        yield* h.service.drain;
+        yield* h.service.drain;
+        expect(h.sent).toHaveLength(1);
+        expect(h.sent[0]).toMatchObject({ kind: "input", threadId });
+        expect(
+          (yield* h.sql<{
+            identity: string;
+          }>`SELECT identity FROM web_push_deliveries WHERE status = 'sent'`)[0]?.identity,
+        ).toContain(":input:secret-item");
       }),
     ),
   );

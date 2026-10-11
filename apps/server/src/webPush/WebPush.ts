@@ -235,8 +235,14 @@ const make = Effect.gen(function* () {
           event.type.startsWith("thread.") && event.type !== "thread.pull-request-synced";
         const commandExit =
           event.type === "turn-item.updated" && event.payload.type === "command_execution";
+        // A `secret_request` turn item is the pending user input for MCP tools
+        // like request_secret: no run state changes when it starts waiting, so
+        // without this item event the waiting-for-input phase is never
+        // re-evaluated and the input notification never fires.
+        const secretRequestItem =
+          event.type === "turn-item.updated" && event.payload.type === "secret_request";
         if (
-          shouldPublishAgentAwarenessEvent(event) &&
+          (shouldPublishAgentAwarenessEvent(event) || secretRequestItem) &&
           !metadataOnly &&
           !commandExit &&
           (event.type !== "thread.pull-request-synced" || watchReleased)
