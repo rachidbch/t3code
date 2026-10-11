@@ -20,7 +20,7 @@ MIG=/home/t3/.cache/t3-source-migration
 LOG="$MIG/deploy-$NEW.log"
 
 if [ "${2:-}" != "child" ]; then
-  systemd-run --user --unit="t3code-deploy-$NEW" --on-active=10s \
+  systemd-run --user --unit="t3code-deploy-$NEW" --on-active=45s \
     /bin/bash "$(readlink -f "$0")" "$NEW" child
   echo "deploy of $NEW scheduled in 10s (independent of this shell)"
   echo "log: $LOG"
