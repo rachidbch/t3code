@@ -12,7 +12,7 @@ cd "$(dirname "$0")/../.."
 REL_ROOT=${T3_FORK_RELEASES:-/home/t3/.local/share/t3-source/releases}
 TC=${T3_FORK_TOOLCHAIN:-/home/t3/.cache/t3-source-migration/toolchain}
 
-DIRTY=$(git status --porcelain | grep -v $'\tM AGENTS.md' | grep -Ev '^\?\?' || true)
+DIRTY=$(git status --porcelain | grep -v '^ M AGENTS.md' | grep -Ev '^\?\?' || true)
 if [ -n "$DIRTY" ]; then
   echo "REFUSING: uncommitted changes would make the release name a lie:"
   echo "$DIRTY"
