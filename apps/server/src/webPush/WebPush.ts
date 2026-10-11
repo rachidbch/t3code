@@ -19,6 +19,13 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+
+// A notification means the session cannot progress until the user acts, so a
+// delivery never goes stale: the thread is re-read when the notification is
+// built, and the push service holds each message for the protocol maximum
+// instead of dropping it while the device is offline.
+const DELIVERY_WINDOW_MS = 24 * 60 * 60_000;
+const PUSH_TTL_SECONDS = 2_419_200; // 4 weeks: the Web Push / FCM maximum.
 import * as SqlClient from "effect/sql/SqlClient";
 import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
@@ -194,7 +201,7 @@ const make = Effect.gen(function* () {
     notification: { identity: string; payload: WebPushPayload },
     now: number,
     status = "pending",
-    expiresAt = now + 300_000,
+    expiresAt = now + DELIVERY_WINDOW_MS,
   ) =>
     sql`INSERT OR IGNORE INTO web_push_deliveries (device_id, identity, payload, status, due_at, expires_at) VALUES (${deviceId}, ${notification.identity}, ${encodePayload(notification.payload)}, ${status}, ${now}, ${expiresAt})`;
   const replay = Effect.gen(function* () {
@@ -213,10 +220,7 @@ const make = Effect.gen(function* () {
     const changedWatches = new Set<ThreadId>();
     // Collapse the bounded catch-up before reading current projections. A held completion's
     // release may be in a later page; marking it expired from an earlier page would suppress it.
-    const affected = new Map<
-      ThreadId,
-      { sequence: number; expiresAt: number; type: string; runId?: string }
-    >();
+    const affected = new Map<ThreadId, { sequence: number; type: string; runId?: string }>();
     while (sequence < throughSequence) {
       const batch = yield* safeStorage(
         Stream.runCollect(events.read({ afterSequence: sequence, throughSequence, limit: 200 })),
@@ -251,11 +255,6 @@ const make = Effect.gen(function* () {
             event.type === "run.created" || event.type === "run.updated" ? event.payload : null;
           affected.set(event.threadId, {
             sequence: stored.sequence,
-            expiresAt:
-              Math.min(
-                event.occurredAt.epochMilliseconds,
-                (run?.completedAt ?? event.occurredAt).epochMilliseconds,
-              ) + 300_000,
             type: event.type,
             ...(run ? { runId: run.id } : {}),
           });
@@ -287,13 +286,7 @@ const make = Effect.gen(function* () {
               continue;
             for (const device of devices) {
               if (source.sequence > device.after_sequence)
-                yield* insert(
-                  device.device_id,
-                  notification,
-                  now,
-                  source.expiresAt <= now ? "expired" : "pending",
-                  source.expiresAt,
-                );
+                yield* insert(device.device_id, notification, now);
             }
           }
           yield* sql`UPDATE web_push_cursor SET sequence = ${sequence} WHERE id = 1`;
@@ -364,11 +357,7 @@ const make = Effect.gen(function* () {
             return;
           }
           const status = yield* sender
-            .send(
-              subscription,
-              payload,
-              Math.max(1, Math.floor((delivery.expires_at - now) / 1000)),
-            )
+            .send(subscription, payload, PUSH_TTL_SECONDS)
             .pipe(Effect.orElseSucceed(() => 503));
           if (status === 404 || status === 410) {
             yield* removeDevice(device.device_id);

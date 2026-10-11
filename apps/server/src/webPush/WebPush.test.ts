@@ -351,7 +351,7 @@ describe("durable web push", () => {
           yield* h.event({ latestRunId: RunId.make("new") });
           yield* h.service.drain;
           expect(yield* h.sql`SELECT * FROM web_push_deliveries`).toHaveLength(2);
-          yield* TestClock.adjust("2 days");
+          yield* TestClock.adjust("3 days");
           yield* h.service.drain;
           const rows = yield* h.sql<{ identity: string }>`SELECT identity FROM web_push_deliveries`;
           expect(rows).toHaveLength(1);
@@ -359,7 +359,7 @@ describe("durable web push", () => {
         }),
       ),
   );
-  it.effect("does not revive an expired completion when thread metadata changes", () =>
+  it.effect("delivers a late completion once; later metadata changes do not duplicate it", () =>
     run(
       Effect.gen(function* () {
         const h = yield* harness;
@@ -367,42 +367,42 @@ describe("durable web push", () => {
         yield* h.event({ latestRunId: RunId.make("new") });
         yield* TestClock.adjust("6 minutes");
         yield* h.service.drain;
+        expect(h.sent).toHaveLength(1);
         yield* h.metadata();
         yield* h.service.drain;
-        expect(h.sent).toHaveLength(0);
+        expect(h.sent).toHaveLength(1);
       }),
     ),
   );
-  it.effect("does not revive an expired completion when a long-lived command exits", () =>
+  it.effect("a long-lived command exit does not duplicate a delivered completion", () =>
     run(
       Effect.gen(function* () {
         const h = yield* harness;
         yield* h.register();
         yield* h.event({ latestRunId: RunId.make("new") });
-        yield* TestClock.adjust("6 minutes");
         yield* h.service.drain;
         yield* h.commandExit();
         yield* h.service.drain;
-        expect(h.sent).toHaveLength(0);
+        expect(h.sent).toHaveLength(1);
         expect(
           (yield* h.sql<{
             status: string;
           }>`SELECT status FROM web_push_deliveries WHERE identity LIKE '%completion:new'`)[0]
             ?.status,
-        ).toBe("expired");
+        ).toBe("sent");
       }),
     ),
   );
-  it.effect("does not revive an expired unheld completion on a PR metadata sync", () =>
+  it.effect("a PR metadata sync does not duplicate a delivered completion", () =>
     run(
       Effect.gen(function* () {
         const h = yield* harness;
         yield* h.register();
         yield* h.event({ latestRunId: RunId.make("new") });
-        yield* TestClock.adjust("6 minutes");
+        yield* h.service.drain;
         yield* h.metadata("thread.pull-request-synced");
         yield* h.service.drain;
-        expect(h.sent).toHaveLength(0);
+        expect(h.sent).toHaveLength(1);
       }),
     ),
   );
@@ -453,31 +453,24 @@ describe("durable web push", () => {
       }),
     ),
   );
-  it.effect(
-    "checks each delivery deadline and reduces provider TTL to the remaining lifetime",
-    () =>
-      run(
-        Effect.gen(function* () {
-          const h = yield* harness;
-          yield* h.register();
-          yield* h.service.register(owner, {
-            deviceId: "22222222-2222-4222-8222-222222222222",
-            origin: "https://app.example",
-            subscription: { ...subscription, endpoint: subscription.endpoint + "secondary" },
-          });
-          yield* h.event({ latestRunId: RunId.make("new") });
-          yield* TestClock.adjust("1 minute");
-          h.setOnSend(() => TestClock.adjust("5 minutes"));
-          yield* h.service.drain;
-          expect(h.sent).toHaveLength(1);
-          expect(h.ttls).toEqual([240]);
-          expect(
-            yield* h.sql<{
-              status: string;
-            }>`SELECT status FROM web_push_deliveries WHERE identity LIKE '%completion:new' AND status = 'expired'`,
-          ).toHaveLength(1);
-        }),
-      ),
+  it.effect("sends every device's delivery with the protocol-maximum TTL", () =>
+    run(
+      Effect.gen(function* () {
+        const h = yield* harness;
+        yield* h.register();
+        yield* h.service.register(owner, {
+          deviceId: "22222222-2222-4222-8222-222222222222",
+          origin: "https://app.example",
+          subscription: { ...subscription, endpoint: subscription.endpoint + "secondary" },
+        });
+        yield* h.event({ latestRunId: RunId.make("new") });
+        yield* TestClock.adjust("1 minute");
+        h.setOnSend(() => TestClock.adjust("5 minutes"));
+        yield* h.service.drain;
+        expect(h.sent).toHaveLength(2);
+        expect(h.ttls).toEqual([2_419_200, 2_419_200]);
+      }),
+    ),
   );
   it.effect("lets Disable cancel another device before the remaining batch is sent", () =>
     run(
@@ -552,19 +545,21 @@ describe("durable web push", () => {
       }),
     ),
   );
-  it.effect("does not replay expired work or notify archived/subagent threads", () =>
+  it.effect("notifies a late completion but never archived or subagent threads", () =>
     run(
       Effect.gen(function* () {
         const h = yield* harness;
         yield* h.register();
         yield* h.event(
-          { latestRunId: RunId.make("new") },
+          { latestRunId: RunId.make("late"), status: "completed" },
           DateTime.subtract(yield* DateTime.now, { minutes: 6 }),
         );
         yield* h.service.drain;
-        yield* h.event({ archivedAt: yield* DateTime.now });
+        expect(h.sent).toHaveLength(1);
+        yield* h.event({ latestRunId: RunId.make("archived"), archivedAt: yield* DateTime.now });
         yield* h.service.drain;
         yield* h.event({
+          latestRunId: RunId.make("sub"),
           archivedAt: null,
           lineage: {
             rootThreadId: threadId,
@@ -573,7 +568,7 @@ describe("durable web push", () => {
           },
         });
         yield* h.service.drain;
-        expect(h.sent).toHaveLength(0);
+        expect(h.sent).toHaveLength(1);
       }),
     ),
   );
