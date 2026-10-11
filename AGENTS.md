@@ -84,6 +84,14 @@ The most common defect in this repo is a change that works on the path you teste
 - To reuse web dev auth across worktrees, configure one fixed `T3CODE_DEV_AUTH_TOKEN` in the main checkout's gitignored `.env`. The `t3.json` setup links that file into worktrees. Never commit or publish the token or a startup URL. See [Reusable dev credential](docs/operations/development.md#reusable-dev-credential).
 - Stop what you started, by the PID you tracked. See rule 1.
 
+## Fork release builds and deploys
+
+- `apps/server/package.json` holds the last released version until upstream bumps it, and only upstream CI stamps builds beyond that. An unstamped bundle self-reports as the previous release, so provider compatibility misclassifies it (opencode 2.x flagged broken, "Update all" silently skips it). Never ship an unstamped bundle; the semver checks ignore prerelease suffixes, so `<next>-dev.<sha>` classifies as `<next>`.
+- Build: `scripts/fork/build-release.sh` — stamps the version (next = highest of package version, manifest `t3CodeRange` lower bounds, installed `~/.t3/runtime/versions` nightly bases), builds server + web with the pinned toolchain, and assembles `/home/t3/.local/share/t3-source/releases/<short-sha>/`. It refuses uncommitted source changes so a release name always identifies an exact commit (AGENTS.md local edits are allowed).
+- Deploy: `scripts/fork/deploy-release.sh <sha>` — re-executes itself as an independent systemd user unit (survives the restart that would kill the agent), backs up unit + database, swaps the release, health-checks, auto-rolls back on failure.
+- Rollback runbook for a no-context agent: `ROLLBACK.md` at the repository root. Keep it accurate when the deploy topology changes.
+- Pinned toolchain (repo `vp` cannot build apps/web — vite-plus-core version mismatch): `/home/t3/.cache/t3-source-migration/toolchain` (node + `vite-plus-1.0.0`). Override with `T3_FORK_TOOLCHAIN`.
+
 ## Test data
 
 An empty database is a bad test. Seed your worktree's `.t3` with a copy of real data instead of pointing at live state:
